@@ -1,0 +1,6 @@
+[mcp_servers.laravel-boost]
+command = "wsl.exe"
+args = ["/home/jeremy/.config/herd-lite/bin/php", "/home/jeremy/sites/followmylink/artisan", "boost:mcp"]
+
+[mcp_servers.laravel-boost.tools.search-docs]
+approval_mode = "approve"

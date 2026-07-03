@@ -1,11 +1,5 @@
 <?php
 
-use App\Models\User;
-
-test('confirm password screen can be rendered', function () {
-    $user = User::factory()->create();
-
-    $response = $this->actingAs($user)->get(route('password.confirm'));
-
-    $response->assertOk();
+test('password confirmation screen is not exposed', function () {
+    $this->get('/confirm-password')->assertNotFound();
 });

@@ -117,6 +117,26 @@ it('warns for unsafe redirect targets', function () {
     expect(collect($unsafe['warnings'])->pluck('code')->all())->toContain('blocked_ip');
 });
 
+it('warns when http is not upgraded and when https is downgraded', function () {
+    bindRedirectDns();
+
+    Http::fake([
+        'http://example.com/' => Http::response('<html></html>', 200, ['Content-Type' => 'text/html']),
+    ]);
+
+    $httpResult = app(RedirectTester::class)->test('http://example.com')->toArray();
+
+    Http::fake([
+        'https://example.com/' => Http::response('', 302, ['Location' => 'http://www.example.com/']),
+        'http://www.example.com/' => Http::response('<html></html>', 200, ['Content-Type' => 'text/html']),
+    ]);
+
+    $downgradeResult = app(RedirectTester::class)->test('https://example.com')->toArray();
+
+    expect(collect($httpResult['warnings'])->pluck('code')->all())->toContain('http_not_upgraded')
+        ->and(collect($downgradeResult['warnings'])->pluck('code')->all())->toContain('https_downgrade');
+});
+
 it('warns for missing redirect targets', function () {
     bindRedirectDns(['example.com' => ['93.184.216.34']]);
 

@@ -130,7 +130,86 @@
             </div>
         </section>
 
-        <section class="grid gap-4 lg:grid-cols-2">
+        <section class="rounded-2xl border border-border-muted bg-panel p-5">
+            <div class="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                <div>
+                    <div class="flex items-center gap-2">
+                        <flux:icon.shield-check class="size-6 text-link-purple-soft" />
+                        <h2 class="font-display text-xl font-semibold text-text-strong">Header analysis</h2>
+                    </div>
+                    <p class="mt-2 max-w-3xl text-sm text-text-muted">{{ $result['security_headers']['verdict'] }}</p>
+                </div>
+                <p class="shrink-0 text-sm text-text-muted">{{ $result['security_headers']['checked'] }} headers checked</p>
+            </div>
+
+            @if ($result['security_headers']['scanned'])
+                <div class="mt-4 grid grid-cols-2 gap-2 sm:grid-cols-5">
+                    @foreach (['good' => 'Good', 'warning' => 'Warnings', 'missing' => 'Missing', 'duplicate' => 'Duplicates', 'info' => 'Info'] as $key => $label)
+                        <div class="rounded-xl border border-border-muted bg-panel-soft p-3" wire:key="header-count-{{ $key }}">
+                            <p class="text-xs uppercase text-text-muted">{{ $label }}</p>
+                            <p class="mt-1 font-display text-2xl font-semibold text-text-strong">{{ $result['security_headers']['counts'][$key] }}</p>
+                        </div>
+                    @endforeach
+                </div>
+
+                <div class="mt-5 grid gap-3 lg:grid-cols-2">
+                    @foreach ($result['security_headers']['analyses'] as $analysis)
+                        @php
+                            $statusClasses = match ($analysis['status']) {
+                                'Good' => 'bg-status-success-bg text-status-success',
+                                'Missing' => 'bg-status-danger-bg text-status-danger',
+                                'Warning', 'Duplicate' => 'bg-status-warning-bg text-status-warning',
+                                default => 'bg-panel-muted text-link-purple-soft',
+                            };
+                        @endphp
+                        <article class="rounded-xl border border-border-muted bg-panel-soft p-4" wire:key="header-analysis-{{ $analysis['header'] }}">
+                            <div class="flex items-start justify-between gap-3">
+                                <h3 class="break-all font-mono text-sm font-semibold text-text-strong">{{ $analysis['header'] }}</h3>
+                                <span class="rounded-full px-2 py-1 text-xs font-semibold {{ $statusClasses }}">{{ $analysis['status'] }}</span>
+                            </div>
+
+                            @if ($analysis['found_values'])
+                                <div class="mt-3">
+                                    <p class="text-xs font-semibold uppercase text-text-muted">Found value</p>
+                                    @foreach ($analysis['found_values'] as $value)
+                                        <p class="mt-1 break-all font-mono text-xs text-text-base">{{ $value }}</p>
+                                    @endforeach
+                                </div>
+                            @endif
+
+                            @if ($analysis['recommended_value'])
+                                <div class="mt-3">
+                                    <p class="text-xs font-semibold uppercase text-text-muted">Recommended value</p>
+                                    <p class="mt-1 break-all font-mono text-xs text-link-purple-soft">{{ $analysis['recommended_value'] }}</p>
+                                </div>
+                            @endif
+
+                            <p class="mt-3 text-sm text-text-muted">{{ $analysis['explanation'] }}</p>
+                            <p class="mt-2 text-sm text-text-base"><span class="font-semibold">Suggested fix:</span> {{ $analysis['suggested_fix'] }}</p>
+                        </article>
+                    @endforeach
+                </div>
+
+                <details class="mt-5 rounded-xl border border-border-muted bg-panel-soft p-4">
+                    <summary class="cursor-pointer text-sm font-semibold text-text-strong">Raw final response headers</summary>
+                    <dl class="mt-3 grid gap-3 text-xs">
+                        @foreach ($result['security_headers']['raw_headers'] as $name => $values)
+                            <div class="grid gap-1 md:grid-cols-[16rem_1fr]" wire:key="raw-header-{{ $name }}">
+                                <dt class="font-mono text-link-purple-soft">{{ $name }}</dt>
+                                <dd>
+                                    @foreach ($values as $value)
+                                        <p class="break-all font-mono text-text-muted">{{ $value }}</p>
+                                    @endforeach
+                                </dd>
+                            </div>
+                        @endforeach
+                    </dl>
+                    <p class="mt-3 text-xs text-text-muted">Some HTTP clients normalize or combine duplicate header values before they reach the report.</p>
+                </details>
+            @endif
+        </section>
+
+        <section>
             <div class="rounded-2xl border border-border-muted bg-panel p-5">
                 <div class="flex items-center gap-2">
                     <flux:icon.magnifying-glass-circle class="size-6 text-status-warning" />
@@ -152,27 +231,6 @@
                 </dl>
             </div>
 
-            <div class="rounded-2xl border border-border-muted bg-panel p-5">
-                <div class="flex items-center gap-2">
-                    <flux:icon.shield-check class="size-6 text-link-purple-soft" />
-                    <h2 class="font-display text-xl font-semibold text-text-strong">Security headers</h2>
-                </div>
-                <p class="mt-2 text-sm text-text-muted">Score {{ $result['security_headers']['score'] }} / 5</p>
-                <dl class="mt-4 grid gap-2 text-sm">
-                    @foreach ($result['security_headers']['present'] as $name => $value)
-                        <div class="flex items-start justify-between gap-4" wire:key="present-{{ $name }}">
-                            <dt class="font-mono text-text-muted">{{ $name }}</dt>
-                            <dd class="rounded-full bg-status-success-bg px-2 py-1 text-right text-xs font-semibold text-status-success">Present</dd>
-                        </div>
-                    @endforeach
-                    @foreach ($result['security_headers']['missing'] as $name)
-                        <div class="flex items-start justify-between gap-4" wire:key="missing-{{ $name }}">
-                            <dt class="font-mono text-text-muted">{{ $name }}</dt>
-                            <dd class="rounded-full bg-status-danger-bg px-2 py-1 text-right text-xs font-semibold text-status-danger">Missing</dd>
-                        </div>
-                    @endforeach
-                </dl>
-            </div>
         </section>
 
         <script type="application/json" id="redirect-result-json">@json($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)</script>

@@ -9,6 +9,7 @@ use App\Services\RedirectTesting\DTO\RedirectHop;
 use App\Services\RedirectTesting\DTO\RedirectTestResult;
 use App\Services\RedirectTesting\DTO\RedirectWarning;
 use App\Services\RedirectTesting\DTO\SecurityHeadersResult;
+use App\Services\RedirectTesting\HeaderAnalyzer;
 use App\Services\RedirectTesting\UrlSafetyException;
 use GuzzleHttp\Psr7\Utils;
 use Illuminate\Http\Client\ConnectionException;
@@ -57,6 +58,7 @@ final class RedirectTester
 
     public function __construct(
         private readonly DnsResolver $dnsResolver,
+        private readonly HeaderAnalyzer $headerAnalyzer,
     ) {}
 
     /**
@@ -91,7 +93,7 @@ final class RedirectTester
                 userAgent: $userAgent,
                 chain: [],
                 canonical: new CanonicalResult(false, null, null, 'No response was available to scan.'),
-                securityHeaders: new SecurityHeadersResult(false, [], [], 0),
+                securityHeaders: new SecurityHeadersResult(false, [], [], ['good' => 0, 'missing' => 0, 'warning' => 0, 'duplicate' => 0, 'info' => 0], 'No response was available to analyze.'),
                 warnings: [new RedirectWarning($exception->codeName, 'error', $exception->getMessage(), trim($url))],
                 generatedAt: Carbon::now(),
             );
@@ -207,6 +209,14 @@ final class RedirectTester
             $warnings[] = new RedirectWarning('html_not_scanned', 'info', 'The final response was not HTML, so canonical and client-side redirect checks were skipped.', $finalUrl);
         }
 
+        if ($finalUrl !== null && parse_url($initialUrl, PHP_URL_SCHEME) === 'http' && parse_url($finalUrl, PHP_URL_SCHEME) === 'http') {
+            $warnings[] = new RedirectWarning('http_not_upgraded', 'warning', 'The HTTP URL did not redirect to HTTPS.', $finalUrl);
+        }
+
+        if ($this->hasHttpsDowngrade($chain)) {
+            $warnings[] = new RedirectWarning('https_downgrade', 'error', 'The redirect chain changes from HTTPS back to HTTP.', $finalUrl);
+        }
+
         return new RedirectTestResult(
             requestedUrl: $url,
             normalizedUrl: $initialUrl,
@@ -219,7 +229,7 @@ final class RedirectTester
             userAgent: $userAgent,
             chain: $chain,
             canonical: $this->canonicalResult($finalBody, $finalUrl, $finalContentType),
-            securityHeaders: $this->securityHeadersResult($finalResponse),
+            securityHeaders: $this->securityHeadersResult($finalResponse, $finalUrl),
             warnings: $warnings,
             generatedAt: Carbon::now(),
         );
@@ -594,32 +604,29 @@ final class RedirectTester
         );
     }
 
-    private function securityHeadersResult(?Response $response): SecurityHeadersResult
+    private function securityHeadersResult(?Response $response, ?string $finalUrl): SecurityHeadersResult
     {
-        if ($response === null) {
-            return new SecurityHeadersResult(false, [], [], 0);
+        if ($response === null || $finalUrl === null) {
+            return new SecurityHeadersResult(false, [], [], ['good' => 0, 'missing' => 0, 'warning' => 0, 'duplicate' => 0, 'info' => 0], 'No response was available to analyze.');
         }
 
-        $headers = $this->headers($response);
-        $expected = [
-            'strict-transport-security',
-            'content-security-policy',
-            'x-content-type-options',
-            'referrer-policy',
-            'permissions-policy',
-        ];
-        $present = [];
-        $missing = [];
+        return $this->headerAnalyzer->analyze($response->headers(), $finalUrl);
+    }
 
-        foreach ($expected as $header) {
-            if (isset($headers[$header])) {
-                $present[$header] = $headers[$header];
-            } else {
-                $missing[] = $header;
+    /**
+     * @param  list<RedirectHop>  $chain
+     */
+    private function hasHttpsDowngrade(array $chain): bool
+    {
+        foreach ($chain as $index => $hop) {
+            $next = $chain[$index + 1] ?? null;
+
+            if (parse_url($hop->url, PHP_URL_SCHEME) === 'https' && $next !== null && parse_url($next->url, PHP_URL_SCHEME) === 'http') {
+                return true;
             }
         }
 
-        return new SecurityHeadersResult(true, $present, $missing, count($present));
+        return false;
     }
 
     private function isHttpsUpgrade(string $initialUrl, ?string $finalUrl): bool

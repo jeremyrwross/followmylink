@@ -3,6 +3,7 @@
 use App\Services\RedirectTester;
 use App\Services\RedirectTesting\CappedResponseBody;
 use App\Services\RedirectTesting\DnsResolver;
+use App\Services\RedirectTesting\HeaderAnalyzer;
 use App\Services\RedirectTesting\UrlSafetyException;
 use GuzzleHttp\Psr7\Utils;
 use Illuminate\Support\Facades\Http;
@@ -17,7 +18,7 @@ function redirectTesterWithDns(array $records = ['example.com' => ['93.184.216.3
         {
             return $this->records[$host] ?? [];
         }
-    });
+    }, new HeaderAnalyzer);
 }
 
 it('normalizes urls and defaults to https', function () {
@@ -62,9 +63,7 @@ it('allows standard and configured alternate ports', function (string $url) {
     $result = redirectTesterWithDns(['example.com' => ['93.184.216.34']])->test($url)->toArray();
 
     expect($result['final_status'])->toBe(200)
-        ->and($result['warnings'])->sequence(
-            fn ($warning) => $warning->code->toBe('html_not_scanned'),
-        );
+        ->and(collect($result['warnings'])->pluck('code')->all())->toContain('html_not_scanned');
 })->with([
     'http' => ['http://example.com'],
     'https' => ['https://example.com'],
@@ -119,8 +118,9 @@ it('returns stable json output with the selected user agent and security headers
         'generated_at',
     ])
         ->and($result['user_agent']['label'])->toBe('Googlebot')
-        ->and($result['security_headers']['present'])->toHaveKeys(['strict-transport-security', 'x-content-type-options'])
-        ->and($result['security_headers']['missing'])->toContain('content-security-policy');
+        ->and($result['security_headers']['checked'])->toBe(10)
+        ->and(collect($result['security_headers']['analyses'])->firstWhere('header', 'Strict-Transport-Security')['status'])->toBe('Good')
+        ->and(collect($result['security_headers']['analyses'])->firstWhere('header', 'Content-Security-Policy')['status'])->toBe('Missing');
 });
 
 it('blocks ipv6 loopback and unspecified addresses', function (string $ipv6, string $description) {
@@ -295,9 +295,7 @@ it('allows public ipv6 addresses', function (string $ipv6, string $description) 
     ])->test('http://ipv6-public.test')->toArray();
 
     expect($result['final_status'])->toBe(200)
-        ->and($result['warnings'])->sequence(
-            fn ($warning) => $warning->code->toBe('html_not_scanned'),
-        );
+        ->and(collect($result['warnings'])->pluck('code')->all())->toContain('html_not_scanned');
 })->with([
     'google-dns' => ['2001:4860:4860::8888', 'Google DNS'],
     'cloudflare-dns' => ['2606:4700:4700::1111', 'Cloudflare DNS'],

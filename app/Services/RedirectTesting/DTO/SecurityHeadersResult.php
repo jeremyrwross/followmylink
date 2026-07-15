@@ -5,26 +5,30 @@ namespace App\Services\RedirectTesting\DTO;
 final readonly class SecurityHeadersResult
 {
     /**
-     * @param  array<string, string>  $present
-     * @param  list<string>  $missing
+     * @param  list<HeaderAnalysisResult>  $analyses
+     * @param  array<string, list<string>>  $rawHeaders
+     * @param  array{good: int, missing: int, warning: int, duplicate: int, info: int}  $counts
      */
     public function __construct(
         public bool $scanned,
-        public array $present,
-        public array $missing,
-        public int $score,
+        public array $analyses,
+        public array $rawHeaders,
+        public array $counts,
+        public string $verdict,
     ) {}
 
     /**
-     * @return array{scanned: bool, present: array<string, string>, missing: list<string>, score: int}
+     * @return array{scanned: bool, checked: int, counts: array{good: int, missing: int, warning: int, duplicate: int, info: int}, verdict: string, analyses: list<array<string, mixed>>, raw_headers: array<string, list<string>>}
      */
     public function toArray(): array
     {
         return [
             'scanned' => $this->scanned,
-            'present' => $this->present,
-            'missing' => $this->missing,
-            'score' => $this->score,
+            'checked' => count($this->analyses),
+            'counts' => $this->counts,
+            'verdict' => $this->verdict,
+            'analyses' => array_map(fn (HeaderAnalysisResult $analysis): array => $analysis->toArray(), $this->analyses),
+            'raw_headers' => $this->rawHeaders,
         ];
     }
 }

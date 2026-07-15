@@ -38,7 +38,10 @@ it('renders a successful result and selected user agent', function () {
         ->call('test')
         ->assertHasNoErrors()
         ->assertSee('200')
-        ->assertSee('Slack unfurl bot');
+        ->assertSee('Slack unfurl bot')
+        ->assertSee('Header analysis')
+        ->assertSee('10 headers checked')
+        ->assertSee('Content-Security-Policy');
 });
 
 it('rate limits the public route with a friendly response', function () {

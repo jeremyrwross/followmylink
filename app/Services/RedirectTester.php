@@ -294,7 +294,7 @@ final class RedirectTester
     {
         $parts = parse_url($this->normalizeUrl($url));
 
-        if ($parts === false) {
+        if ($parts === false || ! isset($parts['scheme'], $parts['host'])) {
             return strtolower($url);
         }
 
@@ -388,7 +388,7 @@ final class RedirectTester
     }
 
     /**
-     * @return array<int, string>
+     * @return array<int, list<string>>
      */
     private function curlOptions(string $url, string $ip): array
     {

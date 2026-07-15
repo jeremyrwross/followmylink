@@ -39,6 +39,7 @@ final class HeaderAnalyzer
             $analyses[] = $this->analyzeHeader($key, $definition, $values, $isHttps, $hasFrameAncestors, isset($normalized['x-frame-options']));
         }
 
+        /** @var array{good: int, missing: int, warning: int, duplicate: int, info: int} $counts */
         $counts = ['good' => 0, 'missing' => 0, 'warning' => 0, 'duplicate' => 0, 'info' => 0];
 
         foreach ($analyses as $analysis) {
@@ -119,7 +120,6 @@ final class HeaderAnalyzer
             'referrer-policy' => $lowerValue === 'strict-origin-when-cross-origin',
             'x-frame-options' => in_array($lowerValue, ['sameorigin', 'deny'], true),
             'x-permitted-cross-domain-policies' => $lowerValue === 'none',
-            'x-xss-protection' => $lowerValue === '0',
             default => true,
         };
 
@@ -143,7 +143,7 @@ final class HeaderAnalyzer
 
         foreach ($headers as $name => $values) {
             $key = strtolower($name);
-            $normalized[$key] = [...($normalized[$key] ?? []), ...array_values($values)];
+            $normalized[$key] = [...($normalized[$key] ?? []), ...$values];
         }
 
         ksort($normalized);

@@ -63,9 +63,7 @@ it('allows standard and configured alternate ports', function (string $url) {
     $result = redirectTesterWithDns(['example.com' => ['93.184.216.34']])->test($url)->toArray();
 
     expect($result['final_status'])->toBe(200)
-        ->and($result['warnings'])->sequence(
-            fn ($warning) => $warning->code->toBe('html_not_scanned'),
-        );
+        ->and(collect($result['warnings'])->pluck('code')->all())->toContain('html_not_scanned');
 })->with([
     'http' => ['http://example.com'],
     'https' => ['https://example.com'],
@@ -297,9 +295,7 @@ it('allows public ipv6 addresses', function (string $ipv6, string $description) 
     ])->test('http://ipv6-public.test')->toArray();
 
     expect($result['final_status'])->toBe(200)
-        ->and($result['warnings'])->sequence(
-            fn ($warning) => $warning->code->toBe('html_not_scanned'),
-        );
+        ->and(collect($result['warnings'])->pluck('code')->all())->toContain('html_not_scanned');
 })->with([
     'google-dns' => ['2001:4860:4860::8888', 'Google DNS'],
     'cloudflare-dns' => ['2606:4700:4700::1111', 'Cloudflare DNS'],

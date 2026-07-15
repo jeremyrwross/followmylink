@@ -39,11 +39,17 @@ final class HeaderAnalyzer
             $analyses[] = $this->analyzeHeader($key, $definition, $values, $isHttps, $hasFrameAncestors, isset($normalized['x-frame-options']));
         }
 
-        /** @var array{good: int, missing: int, warning: int, duplicate: int, info: int} $counts */
         $counts = ['good' => 0, 'missing' => 0, 'warning' => 0, 'duplicate' => 0, 'info' => 0];
 
         foreach ($analyses as $analysis) {
-            $counts[strtolower($analysis->status)]++;
+            match ($analysis->status) {
+                'Good' => $counts['good']++,
+                'Missing' => $counts['missing']++,
+                'Warning' => $counts['warning']++,
+                'Duplicate' => $counts['duplicate']++,
+                'Info' => $counts['info']++,
+                default => null,
+            };
         }
 
         return new SecurityHeadersResult(

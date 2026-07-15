@@ -3,6 +3,7 @@
 use App\Services\RedirectTester;
 use App\Services\RedirectTesting\CappedResponseBody;
 use App\Services\RedirectTesting\DnsResolver;
+use App\Services\RedirectTesting\HeaderAnalyzer;
 use App\Services\RedirectTesting\UrlSafetyException;
 use GuzzleHttp\Psr7\Utils;
 use Illuminate\Support\Facades\Http;
@@ -17,7 +18,7 @@ function redirectTesterWithDns(array $records = ['example.com' => ['93.184.216.3
         {
             return $this->records[$host] ?? [];
         }
-    });
+    }, new HeaderAnalyzer);
 }
 
 it('normalizes urls and defaults to https', function () {
@@ -119,8 +120,9 @@ it('returns stable json output with the selected user agent and security headers
         'generated_at',
     ])
         ->and($result['user_agent']['label'])->toBe('Googlebot')
-        ->and($result['security_headers']['present'])->toHaveKeys(['strict-transport-security', 'x-content-type-options'])
-        ->and($result['security_headers']['missing'])->toContain('content-security-policy');
+        ->and($result['security_headers']['checked'])->toBe(10)
+        ->and(collect($result['security_headers']['analyses'])->firstWhere('header', 'Strict-Transport-Security')['status'])->toBe('Good')
+        ->and(collect($result['security_headers']['analyses'])->firstWhere('header', 'Content-Security-Policy')['status'])->toBe('Missing');
 });
 
 it('blocks ipv6 loopback and unspecified addresses', function (string $ipv6, string $description) {

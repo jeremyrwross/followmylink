@@ -49,6 +49,31 @@ it('handles hsts differently for http and https pages', function () {
         ->and(analyzedHeader([], 'Strict-Transport-Security', 'http://example.com')['recommended_value'])->toBeNull();
 });
 
+it('warns when the hsts max age is invalid or shorter than one year', function (string $value) {
+    $result = analyzedHeader(['Strict-Transport-Security' => [$value]], 'Strict-Transport-Security');
+
+    expect($result['status'])->toBe('Warning')
+        ->and($result['explanation'])->toContain('at least 31536000 seconds');
+})->with([
+    'disabled' => 'max-age=0',
+    'one second' => 'max-age=1',
+    'just under one year' => 'max-age=31535999',
+    'non-numeric' => 'max-age=forever',
+    'invalid directive name' => 'not-max-age=31536000',
+    'trailing junk' => 'max-age=31536000seconds',
+    'duplicate directive' => 'max-age=31536000; max-age=63072000',
+]);
+
+it('accepts valid hsts max ages of at least one year', function (string $value) {
+    expect(analyzedHeader(['Strict-Transport-Security' => [$value]], 'Strict-Transport-Security')['status'])->toBe('Good');
+})->with([
+    'one year' => 'max-age=31536000',
+    'two years' => 'max-age=63072000; includeSubDomains',
+    'quoted and case insensitive' => 'MAX-AGE="31536000"',
+    'optional whitespace' => 'max-age = 31536000',
+    'arbitrarily large' => 'max-age=999999999999999999999999999999999999',
+]);
+
 it('warns when csp is missing frame ancestors or framing protection is absent', function () {
     $csp = analyzedHeader(['Content-Security-Policy' => ["default-src 'self'"]], 'Content-Security-Policy');
     $missing = analyzedHeader([], 'Content-Security-Policy');

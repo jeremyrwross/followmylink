@@ -7,6 +7,8 @@ use App\Services\RedirectTesting\DTO\SecurityHeadersResult;
 
 final class HeaderAnalyzer
 {
+    private const HSTS_MINIMUM_MAX_AGE = 31_536_000;
+
     /**
      * @var array<string, array{name: string, recommended: string|null, explanation: string}>
      */
@@ -114,8 +116,8 @@ final class HeaderAnalyzer
                 return new HeaderAnalysisResult($definition['name'], 'Warning', $values, null, 'HSTS is ignored over HTTP.', 'Redirect this page to HTTPS and send HSTS only over HTTPS.');
             }
 
-            if (! str_contains($lowerValue, 'max-age=')) {
-                return new HeaderAnalysisResult($definition['name'], 'Warning', $values, $definition['recommended'], 'HSTS is present but does not include a valid max-age directive.', 'Set a max-age. Only use includeSubDomains if every subdomain supports HTTPS; preload is an advanced opt-in and is not recommended by default.');
+            if (! $this->hasSufficientHstsMaxAge($value)) {
+                return new HeaderAnalysisResult($definition['name'], 'Warning', $values, $definition['recommended'], 'HSTS is present but does not include a valid max-age of at least 31536000 seconds.', 'Set max-age to at least 31536000 seconds. Only use includeSubDomains if every subdomain supports HTTPS; preload is an advanced opt-in and is not recommended by default.');
             }
 
             return new HeaderAnalysisResult($definition['name'], 'Good', $values, $definition['recommended'], $definition['explanation'].' Only use includeSubDomains if every subdomain supports HTTPS. Preload is an advanced option.', 'No change required; verify all subdomains support HTTPS before adding includeSubDomains.');
@@ -155,6 +157,34 @@ final class HeaderAnalyzer
         ksort($normalized);
 
         return $normalized;
+    }
+
+    private function hasSufficientHstsMaxAge(string $value): bool
+    {
+        $maxAges = [];
+
+        foreach (explode(';', $value) as $directive) {
+            $parts = explode('=', trim($directive), 2);
+
+            if (strtolower(trim($parts[0])) !== 'max-age') {
+                continue;
+            }
+
+            if (! isset($parts[1]) || preg_match('/^(?:"(\d+)"|(\d+))$/', trim($parts[1]), $matches, PREG_UNMATCHED_AS_NULL) !== 1) {
+                return false;
+            }
+
+            $maxAges[] = ltrim($matches[1] ?? $matches[2], '0') ?: '0';
+        }
+
+        if (count($maxAges) !== 1) {
+            return false;
+        }
+
+        $minimum = (string) self::HSTS_MINIMUM_MAX_AGE;
+
+        return strlen($maxAges[0]) > strlen($minimum)
+            || (strlen($maxAges[0]) === strlen($minimum) && strcmp($maxAges[0], $minimum) >= 0);
     }
 
     /**

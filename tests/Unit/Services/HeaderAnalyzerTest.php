@@ -76,12 +76,46 @@ it('accepts valid hsts max ages of at least one year', function (string $value) 
 
 it('warns when csp is missing frame ancestors or framing protection is absent', function () {
     $csp = analyzedHeader(['Content-Security-Policy' => ["default-src 'self'"]], 'Content-Security-Policy');
+    $substring = analyzedHeader(['Content-Security-Policy' => ['report-uri /frame-ancestors']], 'Content-Security-Policy');
     $missing = analyzedHeader([], 'Content-Security-Policy');
 
     expect($csp['status'])->toBe('Warning')
         ->and($csp['explanation'])->toContain('does not define frame-ancestors')
+        ->and($substring['explanation'])->toContain('does not define frame-ancestors')
         ->and($missing['explanation'])->toContain('iframe/embed');
 });
+
+it('warns when csp permits unrestricted framing', function (string $value) {
+    $result = analyzedHeader(['Content-Security-Policy' => [$value]], 'Content-Security-Policy');
+
+    expect($result['status'])->toBe('Warning')
+        ->and($result['explanation'])->toContain('unrestricted framing');
+})->with([
+    'wildcard' => 'frame-ancestors *',
+    'empty directive' => 'frame-ancestors',
+    'none mixed with another source' => "frame-ancestors 'none' https://example.com",
+    'duplicate directives' => "frame-ancestors 'self'; frame-ancestors https://example.com",
+]);
+
+it('accepts restrictive csp frame ancestor sources', function (string $value) {
+    expect(analyzedHeader(['Content-Security-Policy' => [$value]], 'Content-Security-Policy')['status'])->toBe('Good');
+})->with([
+    'same origin' => "frame-ancestors 'self'",
+    'no origins' => "frame-ancestors 'none'",
+    'specific trusted origin' => 'frame-ancestors https://trusted.example.com',
+]);
+
+it('warns when permissions policy leaves a sensitive feature enabled', function (string $value) {
+    $result = analyzedHeader(['Permissions-Policy' => [$value]], 'Permissions-Policy');
+
+    expect($result['status'])->toBe('Warning')
+        ->and($result['explanation'])->toContain('does not disable all sensitive browser features');
+})->with([
+    'wildcard camera' => 'camera=*, microphone=(), geolocation=(), payment=(), usb=()',
+    'same origin camera' => 'camera=(self), microphone=(), geolocation=(), payment=(), usb=()',
+    'missing usb' => 'camera=(), microphone=(), geolocation=(), payment=()',
+    'duplicate camera' => 'camera=(), camera=(), microphone=(), geolocation=(), payment=(), usb=()',
+]);
 
 it('warns about the deprecated enabled xss protection mode', function () {
     $result = analyzedHeader(['X-XSS-Protection' => ['1; mode=block']], 'X-XSS-Protection');

@@ -9,6 +9,9 @@ final class HeaderAnalyzer
 {
     private const HSTS_MINIMUM_MAX_AGE = 31_536_000;
 
+    /** @var list<string> */
+    private const SENSITIVE_PERMISSION_FEATURES = ['camera', 'microphone', 'geolocation', 'payment', 'usb'];
+
     /**
      * @var array<string, array{name: string, recommended: string|null, explanation: string}>
      */
@@ -34,7 +37,7 @@ final class HeaderAnalyzer
         $analyses = [];
         $isHttps = parse_url($finalUrl, PHP_URL_SCHEME) === 'https';
         $csp = implode('; ', $normalized['content-security-policy'] ?? []);
-        $hasFrameAncestors = str_contains(strtolower($csp), 'frame-ancestors');
+        $hasFrameAncestors = preg_match('/(?:^|;)\s*frame-ancestors(?:\s|;|$)/i', $csp) === 1;
 
         foreach (self::HEADERS as $key => $definition) {
             $values = $normalized[$key] ?? [];
@@ -105,6 +108,14 @@ final class HeaderAnalyzer
 
         if ($key === 'content-security-policy' && ! $hasFrameAncestors) {
             return new HeaderAnalysisResult($definition['name'], 'Warning', $values, $definition['recommended'], 'A CSP is present, but it does not define frame-ancestors. CSP is not controlling which sites can embed this page. Stricter policies should be tested with Content-Security-Policy-Report-Only before enforcement.', 'Add a frame-ancestors directive. The recommended starter policy is conservative and unlikely to break common third-party scripts.');
+        }
+
+        if ($key === 'content-security-policy' && ! $this->hasRestrictiveFrameAncestors($value)) {
+            return new HeaderAnalysisResult($definition['name'], 'Warning', $values, $definition['recommended'], 'The CSP frame-ancestors directive allows unrestricted framing or is malformed.', "Restrict frame-ancestors to 'self', 'none', or the specific trusted origins that may embed this page.");
+        }
+
+        if ($key === 'permissions-policy' && ! $this->disablesSensitivePermissions($value)) {
+            return new HeaderAnalysisResult($definition['name'], 'Warning', $values, $definition['recommended'], 'The Permissions-Policy does not disable all sensitive browser features in the practical baseline.', 'Disable camera, microphone, geolocation, payment, and usb with empty allowlists unless the page explicitly needs them.');
         }
 
         if ($key === 'x-xss-protection' && $lowerValue !== '0') {
@@ -185,6 +196,53 @@ final class HeaderAnalyzer
 
         return strlen($maxAges[0]) > strlen($minimum)
             || (strlen($maxAges[0]) === strlen($minimum) && strcmp($maxAges[0], $minimum) >= 0);
+    }
+
+    private function hasRestrictiveFrameAncestors(string $value): bool
+    {
+        $directives = [];
+
+        foreach (explode(';', $value) as $directive) {
+            $parts = preg_split('/\s+/', trim($directive)) ?: [];
+
+            if (strtolower($parts[0] ?? '') === 'frame-ancestors') {
+                $directives[] = array_map(strtolower(...), array_slice($parts, 1));
+            }
+        }
+
+        if (count($directives) !== 1 || $directives[0] === [] || in_array('*', $directives[0], true)) {
+            return false;
+        }
+
+        return ! in_array("'none'", $directives[0], true) || count($directives[0]) === 1;
+    }
+
+    private function disablesSensitivePermissions(string $value): bool
+    {
+        $disabledFeatures = [];
+
+        foreach (explode(',', $value) as $directive) {
+            $parts = explode('=', trim($directive), 2);
+            $feature = strtolower(trim($parts[0]));
+
+            if (! in_array($feature, self::SENSITIVE_PERMISSION_FEATURES, true)) {
+                continue;
+            }
+
+            if (isset($disabledFeatures[$feature]) || ! isset($parts[1]) || preg_match('/^\(\s*\)$/', trim($parts[1])) !== 1) {
+                return false;
+            }
+
+            $disabledFeatures[$feature] = true;
+        }
+
+        foreach (self::SENSITIVE_PERMISSION_FEATURES as $feature) {
+            if (! isset($disabledFeatures[$feature])) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     /**

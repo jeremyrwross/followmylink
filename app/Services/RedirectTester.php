@@ -2,6 +2,7 @@
 
 namespace App\Services;
 
+use App\Services\RedirectTesting\CappedResponseBody;
 use App\Services\RedirectTesting\DnsResolver;
 use App\Services\RedirectTesting\DTO\CanonicalResult;
 use App\Services\RedirectTesting\DTO\RedirectHop;
@@ -9,6 +10,7 @@ use App\Services\RedirectTesting\DTO\RedirectTestResult;
 use App\Services\RedirectTesting\DTO\RedirectWarning;
 use App\Services\RedirectTesting\DTO\SecurityHeadersResult;
 use App\Services\RedirectTesting\UrlSafetyException;
+use GuzzleHttp\Psr7\Utils;
 use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Carbon;
@@ -124,6 +126,8 @@ final class RedirectTester
 
             $requestStartedAt = microtime(true);
 
+            $responseBody = new CappedResponseBody(Utils::streamFor(fopen('php://temp', 'w+')), self::BODY_LIMIT_BYTES);
+
             try {
                 $response = Http::withHeaders([
                     'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
@@ -134,6 +138,7 @@ final class RedirectTester
                     ->withOptions([
                         'allow_redirects' => false,
                         'curl' => $this->curlOptions($currentUrl, $resolved['ip']),
+                        'sink' => $responseBody,
                     ])
                     ->get($currentUrl);
             } catch (ConnectionException $exception) {
@@ -145,6 +150,10 @@ final class RedirectTester
             $headers = $this->headers($response);
             $contentType = $this->headerValue($headers, 'content-type');
             $body = $this->limitedBody($response);
+
+            if ($responseBody->wasTruncated()) {
+                $warnings[] = new RedirectWarning('body_truncated', 'info', 'The response body exceeded the 512 KiB inspection limit and was truncated.', $currentUrl);
+            }
             $redirectType = null;
             $redirectTo = null;
 
@@ -285,7 +294,7 @@ final class RedirectTester
     {
         $parts = parse_url($this->normalizeUrl($url));
 
-        if ($parts === false) {
+        if ($parts === false || ! isset($parts['scheme'], $parts['host'])) {
             return strtolower($url);
         }
 
@@ -379,7 +388,7 @@ final class RedirectTester
     }
 
     /**
-     * @return array<int, string>
+     * @return array<int, list<string>>
      */
     private function curlOptions(string $url, string $ip): array
     {
@@ -396,7 +405,7 @@ final class RedirectTester
         $port = $parts['port'] ?? ($parts['scheme'] === 'https' ? 443 : 80);
 
         return [
-            CURLOPT_RESOLVE => [$parts['host'].':'.$port.':'.$ip],
+            CURLOPT_RESOLVE => [$parts['host'].':'.$port.':'.(str_contains($ip, ':') ? '['.$ip.']' : $ip)],
         ];
     }
 
@@ -443,8 +452,65 @@ final class RedirectTester
 
         $normalized = strtolower($address);
 
-        return ! ($normalized === '::1'
-            || Str::startsWith($normalized, ['fc', 'fd', 'fe80:', '::', 'ff']));
+        $ipv6PrivateRanges = [
+            '::/96',
+            '::ffff:0:0/96',
+            '64:ff9b::/96',
+            '64:ff9b:1::/48',
+            '100::/64',
+            '2001:2::/48',
+            '2001:10::/28',
+            '2001:20::/28',
+            '2001:db8::/32',
+            '3ffe::/16',
+            'fc00::/7',
+            'fe80::/10',
+            'ff00::/8',
+        ];
+
+        foreach ($ipv6PrivateRanges as $cidr) {
+            if ($this->ipv6InRange($normalized, $cidr)) {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private function ipv6InRange(string $ip, string $cidr): bool
+    {
+        [$network, $bits] = explode('/', $cidr);
+        $ipBin = inet_pton($ip);
+        $netBin = inet_pton($network);
+
+        if ($ipBin === false || $netBin === false) {
+            return false;
+        }
+
+        $maskBytes = [];
+        for ($i = 0; $i < 16; $i++) {
+            if ($bits >= 8) {
+                $maskBytes[] = 255;
+                $bits -= 8;
+            } elseif ($bits > 0) {
+                $maskBytes[] = 255 << (8 - $bits);
+                $bits = 0;
+            } else {
+                $maskBytes[] = 0;
+            }
+        }
+
+        for ($i = 0; $i < 16; $i++) {
+            $ipByte = ord($ipBin[$i]);
+            $netByte = ord($netBin[$i]);
+            $maskByte = $maskBytes[$i];
+
+            if (($ipByte & $maskByte) !== ($netByte & $maskByte)) {
+                return false;
+            }
+        }
+
+        return true;
     }
 
     private function isServerRedirect(Response $response): bool

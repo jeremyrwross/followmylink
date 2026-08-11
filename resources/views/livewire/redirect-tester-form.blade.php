@@ -76,9 +76,10 @@
                     <h2 class="font-display text-2xl font-semibold text-text-strong">Redirect chain</h2>
                     <p class="mt-1 break-all text-sm text-text-muted">{{ $result['final_url'] }}</p>
                 </div>
-                <div class="flex gap-2">
-                    <flux:button type="button" size="sm" variant="subtle" icon="clipboard" onclick="copyRedirectJson()" class="border-border-muted! bg-panel-soft! text-text-base! hover:bg-panel-muted!">Copy JSON</flux:button>
-                    <flux:button type="button" size="sm" variant="subtle" icon="arrow-down-tray" onclick="downloadRedirectJson()" class="border-border-muted! bg-panel-soft! text-text-base! hover:bg-panel-muted!">Download</flux:button>
+                <div class="flex flex-wrap items-center gap-2">
+                    <flux:button type="button" size="sm" variant="subtle" icon="clipboard" wire:click="$js.copyRedirectJson" data-test="copy-redirect-json" class="border-border-muted! bg-panel-soft! text-text-base! hover:bg-panel-muted!">Copy JSON</flux:button>
+                    <flux:button type="button" size="sm" variant="subtle" icon="arrow-down-tray" wire:click="$js.downloadRedirectJson" data-test="download-redirect-json" class="border-border-muted! bg-panel-soft! text-text-base! hover:bg-panel-muted!">Download</flux:button>
+                    <span class="text-xs text-text-muted" data-redirect-json-status role="status" aria-live="polite"></span>
                 </div>
             </div>
 
@@ -233,24 +234,47 @@
 
         </section>
 
-        <script type="application/json" id="redirect-result-json">@json($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)</script>
-        <script>
-            function redirectResultJson() {
-                return document.getElementById('redirect-result-json')?.textContent || '{}';
-            }
-
-            function copyRedirectJson() {
-                navigator.clipboard.writeText(redirectResultJson());
-            }
-
-            function downloadRedirectJson() {
-                const blob = new Blob([redirectResultJson()], { type: 'application/json' });
-                const link = document.createElement('a');
-                link.href = URL.createObjectURL(blob);
-                link.download = 'followmylink-redirect-test.json';
-                link.click();
-                URL.revokeObjectURL(link.href);
-            }
-        </script>
+        <script type="application/json" data-redirect-result-json>@json($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES)</script>
     @endif
 </div>
+
+@script
+<script>
+    const redirectResultJson = () => $wire.$el.querySelector('[data-redirect-result-json]')?.textContent || '{}';
+
+    const updateRedirectJsonStatus = (message) => {
+        const status = $wire.$el.querySelector('[data-redirect-json-status]');
+
+        if (status) {
+            status.textContent = message;
+        }
+    };
+
+    $wire.$js.copyRedirectJson = async () => {
+        try {
+            await navigator.clipboard.writeText(redirectResultJson());
+            updateRedirectJsonStatus('Copied');
+        } catch {
+            updateRedirectJsonStatus('Unable to copy');
+        }
+    };
+
+    $wire.$js.downloadRedirectJson = () => {
+        try {
+            const blob = new Blob([redirectResultJson()], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const link = document.createElement('a');
+
+            link.href = url;
+            link.download = 'followmylink-redirect-test.json';
+            document.body.appendChild(link);
+            link.click();
+            link.remove();
+            setTimeout(() => URL.revokeObjectURL(url), 0);
+            updateRedirectJsonStatus('Downloaded');
+        } catch {
+            updateRedirectJsonStatus('Unable to download');
+        }
+    };
+</script>
+@endscript

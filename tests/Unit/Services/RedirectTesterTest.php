@@ -312,13 +312,17 @@ it('caps response body writes before the buffer exceeds its byte limit', functio
         ->and((string) $body)->toBe(str_repeat('a', 10).str_repeat('b', 6));
 });
 
-it('brackets ipv6 addresses when pinning curl dns resolution', function () {
+it('uses direct requests and pins curl dns resolution', function () {
     if (! defined('CURLOPT_RESOLVE')) {
         $this->markTestSkipped('cURL is not available.');
     }
 
-    $method = new ReflectionMethod(RedirectTester::class, 'curlOptions');
-    $options = $method->invoke(redirectTesterWithDns(), 'https://example.com/path', '2001:4860:4860::8888');
+    $body = new CappedResponseBody(Utils::streamFor(fopen('php://temp', 'w+')), 16);
+    $method = new ReflectionMethod(RedirectTester::class, 'requestOptions');
+    $options = $method->invoke(redirectTesterWithDns(), 'https://example.com/path', '2001:4860:4860::8888', $body);
 
-    expect($options[CURLOPT_RESOLVE])->toBe(['example.com:443:[2001:4860:4860::8888]']);
+    expect($options['allow_redirects'])->toBeFalse()
+        ->and($options['proxy'])->toBe('')
+        ->and($options['curl'][CURLOPT_RESOLVE])->toBe(['example.com:443:[2001:4860:4860::8888]'])
+        ->and($options['sink'])->toBe($body);
 });

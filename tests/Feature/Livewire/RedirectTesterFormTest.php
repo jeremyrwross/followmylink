@@ -41,7 +41,13 @@ it('renders a successful result and selected user agent', function () {
         ->assertSee('Slack unfurl bot')
         ->assertSee('Header analysis')
         ->assertSee('10 headers checked')
-        ->assertSee('Content-Security-Policy');
+        ->assertSee('Content-Security-Policy')
+        ->assertSeeHtml('wire:click="$js.copyRedirectJson"')
+        ->assertSeeHtml('wire:click="$js.downloadRedirectJson"')
+        ->call('test')
+        ->assertHasNoErrors()
+        ->assertSeeHtml('wire:click="$js.copyRedirectJson"')
+        ->assertSeeHtml('wire:click="$js.downloadRedirectJson"');
 });
 
 it('rate limits the public route with a friendly response', function () {

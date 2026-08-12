@@ -137,11 +137,7 @@ final class RedirectTester
                 ])
                     ->connectTimeout(5)
                     ->timeout(10)
-                    ->withOptions([
-                        'allow_redirects' => false,
-                        'curl' => $this->curlOptions($currentUrl, $resolved['ip']),
-                        'sink' => $responseBody,
-                    ])
+                    ->withOptions($this->requestOptions($currentUrl, $resolved['ip'], $responseBody))
                     ->get($currentUrl);
             } catch (ConnectionException $exception) {
                 $chain[] = new RedirectHop($index, $currentUrl, 'GET', null, $exception->getMessage(), $resolved['ip'], $this->elapsedMs($requestStartedAt), null, null, null, [], false);
@@ -348,6 +344,10 @@ final class RedirectTester
      */
     private function validateAndResolveUrl(string $url): array
     {
+        if (! defined('CURLOPT_RESOLVE')) {
+            throw new UrlSafetyException('secure_transport_unavailable', 'Secure DNS pinning is not available on this server.');
+        }
+
         $parts = parse_url($url);
 
         if ($parts === false || ! isset($parts['scheme'], $parts['host'])) {
@@ -398,12 +398,25 @@ final class RedirectTester
     }
 
     /**
+     * @return array{allow_redirects: false, proxy: string, curl: array<int, list<string>>, sink: CappedResponseBody}
+     */
+    private function requestOptions(string $url, string $ip, CappedResponseBody $responseBody): array
+    {
+        return [
+            'allow_redirects' => false,
+            'proxy' => '',
+            'curl' => $this->curlOptions($url, $ip),
+            'sink' => $responseBody,
+        ];
+    }
+
+    /**
      * @return array<int, list<string>>
      */
     private function curlOptions(string $url, string $ip): array
     {
         if (! defined('CURLOPT_RESOLVE')) {
-            return [];
+            throw new UrlSafetyException('secure_transport_unavailable', 'Secure DNS pinning is not available on this server.');
         }
 
         $parts = parse_url($url);

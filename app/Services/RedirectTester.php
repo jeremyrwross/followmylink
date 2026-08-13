@@ -16,6 +16,7 @@ use Illuminate\Http\Client\ConnectionException;
 use Illuminate\Http\Client\Response;
 use Illuminate\Support\Carbon;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\RateLimiter;
 use Illuminate\Support\Str;
 
 final class RedirectTester
@@ -25,6 +26,10 @@ final class RedirectTester
     private const TOTAL_BUDGET_SECONDS = 30;
 
     private const BODY_LIMIT_BYTES = 524288;
+
+    private const TARGET_HOST_MAX_ATTEMPTS = 10;
+
+    private const TARGET_HOST_DECAY_SECONDS = 60;
 
     /**
      * @var array<string, array{label: string, value: string}>
@@ -125,6 +130,15 @@ final class RedirectTester
                 $warnings[] = new RedirectWarning($exception->codeName, 'error', $exception->getMessage(), $currentUrl);
                 break;
             }
+
+            $targetHostRateLimitKey = self::targetHostRateLimitKey($resolved['host']);
+
+            if (RateLimiter::tooManyAttempts($targetHostRateLimitKey, self::TARGET_HOST_MAX_ATTEMPTS)) {
+                $warnings[] = new RedirectWarning('target_host_rate_limited', 'error', 'This target host has received too many redirect checks. Please wait a minute and try again.', $currentUrl);
+                break;
+            }
+
+            RateLimiter::hit($targetHostRateLimitKey, self::TARGET_HOST_DECAY_SECONDS);
 
             $requestStartedAt = microtime(true);
 
@@ -312,6 +326,11 @@ final class RedirectTester
         $portText = ($port !== null && ! (($scheme === 'http' && $port === 80) || ($scheme === 'https' && $port === 443))) ? ':'.$port : '';
 
         return $scheme.'://'.$host.$portText.$path.$query;
+    }
+
+    public static function targetHostRateLimitKey(string $host): string
+    {
+        return 'followmylink:target-host:'.sha1(Str::lower($host));
     }
 
     /**

@@ -1,9 +1,15 @@
 <?php
 
 use App\Livewire\RedirectTesterForm;
+use App\Services\RedirectTester;
 use App\Services\RedirectTesting\DnsResolver;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\RateLimiter;
 use Livewire\Livewire;
+
+beforeEach(function () {
+    RateLimiter::clear(RedirectTester::targetHostRateLimitKey('example.com'));
+});
 
 it('renders the homepage tester', function () {
     $this->get('/')

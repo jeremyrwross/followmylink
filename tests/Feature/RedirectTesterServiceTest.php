@@ -3,6 +3,13 @@
 use App\Services\RedirectTester;
 use App\Services\RedirectTesting\DnsResolver;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\RateLimiter;
+
+beforeEach(function () {
+    foreach (['example.com', 'www.example.com', 'private.test'] as $host) {
+        RateLimiter::clear(RedirectTester::targetHostRateLimitKey($host));
+    }
+});
 
 function bindRedirectDns(array $records = ['example.com' => ['93.184.216.34'], 'www.example.com' => ['93.184.216.34']]): void
 {
@@ -147,4 +154,19 @@ it('warns for missing redirect targets', function () {
     $missing = app(RedirectTester::class)->test('https://example.com')->toArray();
 
     expect(collect($missing['warnings'])->pluck('code')->all())->toContain('missing_redirect_target');
+});
+
+it('rate limits outbound checks by target host', function () {
+    bindRedirectDns(['example.com' => ['93.184.216.34']]);
+
+    for ($i = 0; $i < 10; $i++) {
+        RateLimiter::hit(RedirectTester::targetHostRateLimitKey('example.com'), 60);
+    }
+
+    Http::preventStrayRequests();
+
+    $result = app(RedirectTester::class)->test('https://example.com')->toArray();
+
+    expect($result['chain'])->toBe([])
+        ->and(collect($result['warnings'])->pluck('code')->all())->toContain('target_host_rate_limited');
 });

@@ -1,0 +1,10 @@
+interface:
+  display_name: "FollowMyLink"
+  short_description: "Issue, branch, PR workflow for FollowMyLink"
+  default_prompt: "Use $followmylink when making a code change in this project."
+
+dependencies:
+  tools:
+    - type: "mcp"
+      value: "github"
+      description: "GitHub MCP server for issues, pull requests, checks, and workflow status."

@@ -7,6 +7,13 @@ use App\Services\RedirectTesting\HeaderAnalyzer;
 use App\Services\RedirectTesting\UrlSafetyException;
 use GuzzleHttp\Psr7\Utils;
 use Illuminate\Support\Facades\Http;
+use Illuminate\Support\Facades\RateLimiter;
+
+beforeEach(function () {
+    foreach (['example.com', 'ipv6-public.test'] as $host) {
+        RateLimiter::clear(RedirectTester::targetHostRateLimitKey($host));
+    }
+});
 
 function redirectTesterWithDns(array $records = ['example.com' => ['93.184.216.34']]): RedirectTester
 {
